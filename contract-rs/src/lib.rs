@@ -1,12 +1,11 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedSet;
-use near_sdk::{env, near_bindgen, Promise, PromiseOrValue, PanicOnDefault};
+use near_sdk::{env, near_bindgen, PublicKey, Promise, PromiseOrValue, PanicOnDefault};
 
+#[cfg(all(feature = "wee_alloc", target_arch = "wasm32"))]
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
-pub type AccountId = String;
-pub type PublicKey = Vec<u8>;
 pub type Salt = u64;
 
 /// A Faucet contract that creates and funds accounts if the caller provides basic proof of work
@@ -20,11 +19,11 @@ pub type Salt = u64;
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Faucet {
     /// Account ID which will be a suffix for each account (including a '.' separator).
-    pub account_suffix: AccountId,
+    pub account_suffix: String,
     /// Number of leading zeros in binary representation for a hash
     pub min_difficulty: u32,
     /// Created accounts
-    pub created_accounts: UnorderedSet<AccountId>,
+    pub created_accounts: UnorderedSet<String>,
 }
 
 /// Returns the number of leading zero bits for a given slice of bits.
@@ -50,7 +49,7 @@ fn assert_self() {
 #[near_bindgen]
 impl Faucet {
     #[init]
-    pub fn new(account_suffix: AccountId, min_difficulty: u32) -> Self {
+    pub fn new(account_suffix: String, min_difficulty: u32) -> Self {
         assert!(env::state_read::<Self>().is_none(), "Already initialized");
         Self {
             account_suffix,
@@ -59,7 +58,7 @@ impl Faucet {
         }
     }
 
-    pub fn get_account_suffix(&self) -> AccountId {
+    pub fn get_account_suffix(&self) -> String {
         self.account_suffix.clone()
     }
 
@@ -73,13 +72,13 @@ impl Faucet {
 
     pub fn create_account(
         &mut self,
-        account_id: AccountId,
+        account_id: String,
         public_key: PublicKey,
         salt: Salt,
     ) -> PromiseOrValue<()> {
         // Checking account_id suffix first.
         assert!(
-            account_id.ends_with(&self.account_suffix),
+            account_id.as_str().ends_with(&self.account_suffix.as_str()),
             "Account has to end with the suffix"
         );
 
@@ -93,7 +92,7 @@ impl Faucet {
         //     Constructing a message for checking
         let mut message = account_id.as_bytes().to_vec();
         message.push(b':');
-        message.extend_from_slice(&public_key);
+        message.extend_from_slice(&public_key.as_bytes());
         message.push(b':');
         message.extend_from_slice(&salt.to_le_bytes());
         //     Computing hash of the message
@@ -111,7 +110,7 @@ impl Faucet {
 
         // Creating new account. It still can fail (e.g. account already exists or name is invalid),
         // but we don't care, we'll get a refund back.
-        Promise::new(account_id)
+        Promise::new(account_id.parse().unwrap())
             .create_account()
             .transfer(env::account_balance() / 1000)
             .add_full_access_key(public_key)
@@ -132,7 +131,7 @@ impl Faucet {
                 public_key,
                 0,
                 env::current_account_id(),
-                b"create_account".to_vec(),
+                "create_account".to_string(),
             )
             .into()
     }
@@ -141,8 +140,8 @@ impl Faucet {
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod tests {
-    use near_sdk::MockedBlockchain;
-    use near_sdk::{testing_env, VMContext};
+    use near_sdk::{testing_env, VMContext, PublicKey};
+    use std::convert::TryInto;
     use std::panic;
 
     use super::*;
@@ -196,11 +195,12 @@ mod tests {
         testing_env!(context);
         let account_suffix = ".alice".to_string();
         let min_difficulty = 20;
-        let mut contract = Faucet::new(account_suffix.clone(), min_difficulty);
-        let account_id = "test.alice";
-        let public_key = vec![0u8; 33];
+        let mut contract = Faucet::new(account_suffix, min_difficulty);
+        let account_id = "test.alice".to_string();
+        let data = vec![0u8; 33];
+        let public_key: PublicKey = data.try_into().unwrap();
         let salt = 89949;
-        contract.create_account(account_id.to_string(), public_key, salt);
+        contract.create_account(account_id, public_key, salt);
         assert_eq!(contract.get_num_created_accounts(), 1);
     }
 
@@ -220,12 +220,13 @@ mod tests {
         testing_env!(context);
         let account_suffix = ".alice".to_string();
         let min_difficulty = 0;
-        let mut contract = Faucet::new(account_suffix.clone(), min_difficulty);
-        let account_id = "bob";
-        let public_key = vec![0u8; 33];
+        let mut contract = Faucet::new(account_suffix, min_difficulty);
+        let account_id = "bob".to_string();
+	let data = vec![0u8; 33];
+        let public_key: PublicKey = data.try_into().unwrap();
         let salt = 0;
         catch_unwind_silent(move || {
-            contract.create_account(account_id.to_string(), public_key, salt);
+            contract.create_account(account_id, public_key, salt);
         })
         .unwrap_err();
     }
@@ -236,13 +237,14 @@ mod tests {
         testing_env!(context);
         let account_suffix = ".alice".to_string();
         let min_difficulty = 10;
-        let mut contract = Faucet::new(account_suffix.clone(), min_difficulty);
-        let account_id = "test.alice";
-        let public_key = vec![0u8; 33];
+        let mut contract = Faucet::new(account_suffix, min_difficulty);
+        let account_id = "test.alice".to_string();
+	let data = vec![0u8; 33];
+        let public_key: PublicKey = data.try_into().unwrap();
         let salt = 123;
-        contract.create_account(account_id.to_string(), public_key.clone(), salt);
+        contract.create_account(account_id.clone(), public_key.clone(), salt);
         catch_unwind_silent(move || {
-            contract.create_account(account_id.to_string(), public_key, salt);
+            contract.create_account(account_id, public_key, salt);
         })
         .unwrap_err();
     }
