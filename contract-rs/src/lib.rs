@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedSet;
-use near_sdk::{env, near_bindgen, PublicKey, Promise, PromiseOrValue, PanicOnDefault};
+use near_sdk::{env, near_bindgen, PublicKey, AccountId, Promise, PromiseOrValue, PanicOnDefault};
 
 #[cfg(all(feature = "wee_alloc", target_arch = "wasm32"))]
 #[global_allocator]
@@ -23,7 +23,7 @@ pub struct Faucet {
     /// Number of leading zeros in binary representation for a hash
     pub min_difficulty: u32,
     /// Created accounts
-    pub created_accounts: UnorderedSet<String>,
+    pub created_accounts: UnorderedSet<AccountId>,
 }
 
 /// Returns the number of leading zero bits for a given slice of bits.
@@ -84,10 +84,9 @@ impl Faucet {
 
         // Checking that the given account is not created yet.
         assert!(
-            !self.created_accounts.contains(&account_id),
+            !self.created_accounts.contains(&account_id.parse().unwrap()),
             "The given given account is already created"
         );
-
         // Checking proof of work
         //     Constructing a message for checking
         let mut message = account_id.as_bytes().to_vec();
@@ -106,7 +105,7 @@ impl Faucet {
         // All checks are good, let's proceed by creating an account
 
         // Save that we already has created an account.
-        self.created_accounts.insert(&account_id);
+        self.created_accounts.insert(&account_id.parse().unwrap());
 
         // Creating new account. It still can fail (e.g. account already exists or name is invalid),
         // but we don't care, we'll get a refund back.
