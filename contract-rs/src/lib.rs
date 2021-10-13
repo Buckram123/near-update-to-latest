@@ -72,7 +72,7 @@ impl Faucet {
 
     pub fn create_account(
         &mut self,
-        account_id: String,
+        account_id: AccountId,
         public_key: PublicKey,
         salt: Salt,
     ) -> PromiseOrValue<()> {
@@ -84,7 +84,7 @@ impl Faucet {
 
         // Checking that the given account is not created yet.
         assert!(
-            !self.created_accounts.contains(&account_id.parse().unwrap()),
+            !self.created_accounts.contains(&account_id),
             "The given given account is already created"
         );
         // Checking proof of work
@@ -105,11 +105,11 @@ impl Faucet {
         // All checks are good, let's proceed by creating an account
 
         // Save that we already has created an account.
-        self.created_accounts.insert(&account_id.parse().unwrap());
+        self.created_accounts.insert(&account_id);
 
         // Creating new account. It still can fail (e.g. account already exists or name is invalid),
         // but we don't care, we'll get a refund back.
-        Promise::new(account_id.parse().unwrap())
+        Promise::new(account_id)
             .create_account()
             .transfer(env::account_balance() / 1000)
             .add_full_access_key(public_key)
@@ -195,7 +195,7 @@ mod tests {
         let account_suffix = ".alice".to_string();
         let min_difficulty = 20;
         let mut contract = Faucet::new(account_suffix, min_difficulty);
-        let account_id = "test.alice".to_string();
+        let account_id = "test.alice".parse().unwrap();
         let data = vec![0u8; 33];
         let public_key: PublicKey = data.try_into().unwrap();
         let salt = 89949;
@@ -220,7 +220,7 @@ mod tests {
         let account_suffix = ".alice".to_string();
         let min_difficulty = 0;
         let mut contract = Faucet::new(account_suffix, min_difficulty);
-        let account_id = "bob".to_string();
+        let account_id = "bob".parse().unwrap();
 	let data = vec![0u8; 33];
         let public_key: PublicKey = data.try_into().unwrap();
         let salt = 0;
@@ -237,7 +237,7 @@ mod tests {
         let account_suffix = ".alice".to_string();
         let min_difficulty = 10;
         let mut contract = Faucet::new(account_suffix, min_difficulty);
-        let account_id = "test.alice".to_string();
+        let account_id: AccountId = "test.alice".parse().unwrap();
 	let data = vec![0u8; 33];
         let public_key: PublicKey = data.try_into().unwrap();
         let salt = 123;
